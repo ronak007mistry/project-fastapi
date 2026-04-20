@@ -1,0 +1,49 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  auth:
+    build:
+      context: ./auth_engine
+      dockerfile: Dockerfile
+    environment:
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-shared-secret-change-me-min-32-chars!!}
+      ACCESS_TOKEN_EXPIRE_MINUTES: "120"
+    ports:
+      - "8001:8000"
+
+  products-api:
+    build:
+      context: ./products_engine
+      dockerfile: Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      AUTH_SERVICE_URL: http://auth:8000/validate
+      SQLITE_FILE: /data/app.db
+      ENCRYPT_RESPONSES: ${ENCRYPT_RESPONSES:-false}
+      AES_SECRET: ${AES_SECRET:-dev-only-change-in-production-secret-key!!}
+    ports:
+      - "8002:8000"
+    volumes:
+      - sqlite_data:/data
+    depends_on:
+      - redis
+      - auth
+
+  celery-worker:
+    build:
+      context: ./products_engine
+      dockerfile: Dockerfile
+    command: ["celery", "-A", "celery_app", "worker", "--loglevel=INFO"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      SQLITE_FILE: /data/app.db
+    volumes:
+      - sqlite_data:/data
+    depends_on:
+      - redis
+
+volumes:
+  sqlite_data: {}
